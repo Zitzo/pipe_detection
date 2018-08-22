@@ -54,7 +54,7 @@ public:
     cvtColor(img,hsv, CV_BGR2HSV);
     
     cv::Mat img_inrange;
-    cv::inRange(hsv, cv::Scalar(0,57,0) , cv::Scalar(180,90,255),img_inrange);
+    cv::inRange(hsv, cv::Scalar(90,10,100) , cv::Scalar(130,70,180),img_inrange);
    
     cv::Mat img_hsv;
     cvtColor(hsv,img_hsv, CV_HSV2BGR);
@@ -95,7 +95,7 @@ public:
    
  
   //Publish image
-    cv_bridge::CvImage send (cv_ptr->header, cv_ptr->encoding,img_dilated_bgr);
+    cv_bridge::CvImage send (cv_ptr->header, cv_ptr->encoding,img_inrange_bgr);
     img_pub_.publish(send.toImageMsg());
 
   }
