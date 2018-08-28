@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/home/alejandro/catkin_grvc/devel/include",
+                "/opt/ros/kinetic/include",
+                "/home/alejandro/pipe_detection/src/pipe_detection/include",
+                "/home/alejandro/pipe_detection/src/rgbd_tools/include",
+                "/usr/include"
+            ],
+            "name": "Linux",
+            "intelliSenseMode": "gcc-x64"
+        }
+    ],
+    "version": 4
+}

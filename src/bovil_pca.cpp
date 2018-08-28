@@ -11,10 +11,12 @@
 #include <rgbd_tools/segmentation/color_clustering/types/ccsCreation.h>
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <ctime> 
 //#include <tf/transform_broadcaster.h>
 
 using namespace std;
 using namespace cv;
+unsigned t0, t1, t2, t3;
 
 // Function declarations for PCA
 void drawAxis(Mat&, Point, Point, Scalar, const float);
@@ -70,6 +72,10 @@ double getOrientation(const vector<Point> &pts, Mat &img)
     drawAxis(img, cntr, p1, Scalar(0, 255, 0), 1);
     drawAxis(img, cntr, p2, Scalar(255, 255, 0), 5);
     double angle = atan2(eigen_vecs[0].y, eigen_vecs[0].x); // orientation in radians
+    std::cout << "Centroid coordinates x,y: " << cntr.x << "," << cntr.y << std::endl;
+    std::cout << "P1 x,y: " << p1.x << "," << p1.y << std::endl;
+    std::cout << "P2 x,y: " << p2.x << "," << p2.y << std::endl;
+
     return angle;
 }
 //////////////////////////// 
@@ -124,7 +130,7 @@ public:
 
     // Do something with img and store the result in send
   ROS_INFO("Callback");
-
+ t0=clock();
   /// Create a matrix of the same type and size as src (for dst)
   dst.create( src.size(), src.type() );
     
@@ -140,9 +146,9 @@ public:
   // dst = Scalar::all(0);
   cv::cvtColor(src,dst,CV_BGR2HSV);
   // src.copyTo( dst, detected_edges);
-  std::vector<BOViL::ImageObject> objects;
+  std::vector<rgbd::ImageObject> objects;
   // BOViL::ColorClusterSpace *ccs = BOViL::CreateHSVCS_8c(255,255,255);
-  BOViL::ColorClusterSpace *ccs = BOViL::createSingleClusteredSpace(
+  rgbd::ColorClusterSpace *ccs = rgbd::createSingleClusteredSpace(
     90,130,
     10, 70,
     100,180,
@@ -150,7 +156,7 @@ public:
     32
   );
 
-  BOViL::algorithms::ColorClustering<uchar>(dst.data,
+  rgbd::ColorClustering<uchar>(dst.data,
                                 dst.cols,
                                 dst.rows,
                                 30000,
@@ -175,9 +181,9 @@ public:
   //Publish image
     cv_bridge::CvImage send (cv_ptr->header, cv_ptr->encoding, dst);
     img_pub_.publish(send.toImageMsg());
-
+t1=clock();
     /////////// PCA
-
+t2=clock();
     Mat gray;
     cvtColor(dst, gray, COLOR_BGR2GRAY);
     // Convert image to binary
@@ -201,7 +207,11 @@ public:
     imshow("output1", src);
     imshow("output2", gray);
     imshow("output3", bw);
-
+t3=clock();
+double time1 = (double(t1-t0)/CLOCKS_PER_SEC);
+cout << "Execution Time Bovil: " << time1 << endl;
+double time2 = (double(t3-t2)/CLOCKS_PER_SEC);
+cout << "Execution Time PCA: " << time2 << endl;
   }
 
 };

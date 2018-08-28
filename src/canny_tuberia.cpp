@@ -36,9 +36,9 @@ void CannyThreshold(int, void*)
   // dst = Scalar::all(0);
   cv::cvtColor(src,dst,CV_BGR2HSV);
   // src.copyTo( dst, detected_edges);
-  std::vector<BOViL::ImageObject> objects;
+  std::vector<rgbd::ImageObject> objects;
   // BOViL::ColorClusterSpace *ccs = BOViL::CreateHSVCS_8c(255,255,255);
-  BOViL::ColorClusterSpace *ccs = BOViL::createSingleClusteredSpace(
+  rgbd::ColorClusterSpace *ccs = rgbd::createSingleClusteredSpace(
     0,180,
     30, 90,
     100,180,
@@ -46,7 +46,7 @@ void CannyThreshold(int, void*)
     32
   );
 
-  BOViL::algorithms::ColorClustering<uchar>(dst.data,
+  rgbd::ColorClustering<uchar>(dst.data,
                                 dst.cols,
                                 dst.rows,
                                 30000,

@@ -79,9 +79,9 @@ public:
   // dst = Scalar::all(0);
   cv::cvtColor(src,dst,CV_BGR2HSV);
   // src.copyTo( dst, detected_edges);
-  std::vector<BOViL::ImageObject> objects;
+  std::vector<rgbd::ImageObject> objects;
   // BOViL::ColorClusterSpace *ccs = BOViL::CreateHSVCS_8c(255,255,255);
-  BOViL::ColorClusterSpace *ccs = BOViL::createSingleClusteredSpace(
+  rgbd::ColorClusterSpace *ccs = rgbd::createSingleClusteredSpace(
     90,130,
     10, 70,
     100,180,
@@ -89,7 +89,7 @@ public:
     32
   );
 
-  BOViL::algorithms::ColorClustering<uchar>(dst.data,
+  rgbd::ColorClustering<uchar>(dst.data,
                                 dst.cols,
                                 dst.rows,
                                 30000,
