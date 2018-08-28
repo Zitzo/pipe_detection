@@ -11,7 +11,7 @@
      image_transport::ImageTransport it(nh);
      
      image_transport::Publisher pub = it.advertise("camera/image", 1); 
-     ros::Rate loop_rate(5);
+     ros::Rate loop_rate(1);
      
      while (nh.ok()) {
 	cv::Mat image = cv::imread("/home/alejandro/pipe_detection/src/pipe_detection/src/test1/out"+std::to_string(i)+".jpg", CV_LOAD_IMAGE_COLOR);

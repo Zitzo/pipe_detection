@@ -12,6 +12,8 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <ctime> 
+#include <rgbd_tools/state_filtering/ExtendedKalmanFilter.h>
+#include "std_msgs/Float64.h"
 //#include <tf/transform_broadcaster.h>
 
 using namespace std;
@@ -72,10 +74,11 @@ double getOrientation(const vector<Point> &pts, Mat &img)
     drawAxis(img, cntr, p1, Scalar(0, 255, 0), 1);
     drawAxis(img, cntr, p2, Scalar(255, 255, 0), 5);
     double angle = atan2(eigen_vecs[0].y, eigen_vecs[0].x); // orientation in radians
+    angle = angle*180/3.14159265;
     std::cout << "Centroid coordinates x,y: " << cntr.x << "," << cntr.y << std::endl;
     std::cout << "P1 x,y: " << p1.x << "," << p1.y << std::endl;
     std::cout << "P2 x,y: " << p2.x << "," << p2.y << std::endl;
-
+    std::cout << "Angle: " << angle << std::endl;
     return angle;
 }
 //////////////////////////// 
@@ -95,6 +98,7 @@ class ImageProcessor
   image_transport::ImageTransport it_;
   image_transport::Subscriber img_sub_;
   image_transport::Publisher img_pub_;
+  ros::Publisher angle_pub_;
  // tf::TransformBroadcaster tf_br_;
 public:
   ImageProcessor(ros::NodeHandle& n):
@@ -103,6 +107,7 @@ public:
   {
     img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
+    angle_pub_ = n.advertise<std_msgs::Float64>("/angle", 1000);
     
   }
 
@@ -202,7 +207,11 @@ t2=clock();
         // Draw each contour only for visualisation purposes
         drawContours(src, contours, static_cast<int>(i), Scalar(0, 0, 255), 2, 8, hierarchy, 0);
         // Find the orientation of each shape
-        getOrientation(contours[i], src);
+    double ang = getOrientation(contours[i], src);
+    //Publish angle
+    std_msgs::Float64 angle_msg;
+    angle_msg.data = ang;
+    angle_pub_.publish(angle_msg);
     }
     imshow("output1", src);
     imshow("output2", gray);
