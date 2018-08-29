@@ -14,11 +14,13 @@
 #include <ctime> 
 #include <rgbd_tools/state_filtering/ExtendedKalmanFilter.h>
 #include "std_msgs/Float64.h"
+#include "geometry_msgs/Twist.h"
 //#include <tf/transform_broadcaster.h>
 
 using namespace std;
 using namespace cv;
 unsigned t0, t1, t2, t3;
+Point pipe_center;
 
 // Function declarations for PCA
 void drawAxis(Mat&, Point, Point, Scalar, const float);
@@ -58,6 +60,8 @@ double getOrientation(const vector<Point> &pts, Mat &img)
     //Store the center of the object
     Point cntr = Point(static_cast<int>(pca_analysis.mean.at<double>(0, 0)),
                       static_cast<int>(pca_analysis.mean.at<double>(0, 1)));
+    pipe_center.x = cntr.x;
+    pipe_center.y = cntr.y;
     //Store the eigenvalues and eigenvectors
     vector<Point2d> eigen_vecs(2);
     vector<double> eigen_val(2);
@@ -98,7 +102,7 @@ class ImageProcessor
   image_transport::ImageTransport it_;
   image_transport::Subscriber img_sub_;
   image_transport::Publisher img_pub_;
-  ros::Publisher angle_pub_;
+  ros::Publisher pipe_pub_;
  // tf::TransformBroadcaster tf_br_;
 public:
   ImageProcessor(ros::NodeHandle& n):
@@ -107,7 +111,7 @@ public:
   {
     img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
-    angle_pub_ = n.advertise<std_msgs::Float64>("/angle", 1000);
+    pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
     
   }
 
@@ -209,9 +213,14 @@ t2=clock();
         // Find the orientation of each shape
     double ang = getOrientation(contours[i], src);
     //Publish angle
-    std_msgs::Float64 angle_msg;
-    angle_msg.data = ang;
-    angle_pub_.publish(angle_msg);
+    geometry_msgs::Twist pipe_data;
+    pipe_data.linear.x = pipe_center.x;
+    pipe_data.linear.y = pipe_center.y;
+    pipe_data.linear.z = 0;
+    pipe_data.angular.x = ang;
+    pipe_data.angular.y = 0;
+    pipe_data.angular.y = 0;
+    pipe_pub_.publish(pipe_data);
     }
     imshow("output1", src);
     imshow("output2", gray);
