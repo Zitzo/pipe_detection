@@ -22,7 +22,6 @@ unsigned t0, t1, t2, t3;
 // Function declarations for PCA
 void drawAxis(Mat &, Point, Point, Scalar, const float);
 double getOrientation(const vector<Point> &, vector<Point> &, Mat &);
-double filterCentroid(const vector<Point> &, vector<Point> &, Mat &);
 void drawAxis(Mat &img, Point p, Point q, Scalar colour, const float scale = 0.2)
 {
   double angle;
@@ -43,7 +42,7 @@ void drawAxis(Mat &img, Point p, Point q, Scalar colour, const float scale = 0.2
   p.y = (int)(q.y + 9 * sin(angle - CV_PI / 4));
   line(img, p, q, colour, 1, CV_AA);
 }
-double getOrientation(const vector<Point> &pts, vector<Point> &pipeCentroid, Mat &img)
+double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, Mat &img)
 {
   //Construct a buffer used by the pca analysis
   int sz = static_cast<int>(pts.size());
@@ -78,57 +77,14 @@ double getOrientation(const vector<Point> &pts, vector<Point> &pipeCentroid, Mat
   std::cout << "P1 x,y: " << p1.x << "," << p1.y << std::endl;
   std::cout << "P2 x,y: " << p2.x << "," << p2.y << std::endl;
   // Add cntr point and two eigen_vecs and eigen_val (p1 and p2)
-  pipeCentroid.insert(pipeCentroid.end(), cntr.begin(), cntr.end());
+  pipeCentroid.push_back(cntr.x);
+  pipeCentroid.push_back(cntr.y);
   // for (int i = 0; i < 2; ++i)
   // {
   //   pipeCentroid.insert(pipeCentroid.end(), eigen_vecs[i].begin(), eigen_vecs[i].end());
   //   pipeCentroid.insert(pipeCentroid.end(), eigen_val[i].begin(), eigen_val[i].end());
   // }
   return angle;
-}
-double filterCentroid(const vector<Point> &pipeCentroid, vector<Point> &filteredpipeCentroid, cv::Mat &filteredImg)
-{
-  Eigen::Matrix<float, 3,1> z;    // New observation
-  z <<    pipeCentroid[0],
-          pipeCentroid[1];
-          0;                      // 666: Altitude!!!!!!!!!
-  double rate=0.2;
-  ekf.stepEKF(z,rate);
-  Eigen::Matrix<float,3,1> filteredX = ekf.state();
-
-  circle(filteredImg, filteredCntr, 3, Scalar(255, 0, 255), 2);
-  // Point p1 = filteredCntr + 0.02 * Point(static_cast<int>(eigen_vecs[0].x * eigen_val[0]), static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
-  // Point p2 = filteredCntr - 0.02 * Point(static_cast<int>(eigen_vecs[1].x * eigen_val[1]), static_cast<int>(eigen_vecs[1].y * eigen_val[1]));
-  drawAxis(filteredImg, filteredCntr, p1, Scalar(0, 255, 0), 1);
-  drawAxis(filteredImg, filteredCntr, p2, Scalar(255, 255, 0), 5);
-  double angle = atan2(eigen_vecs[0].y, eigen_vecs[0].x); // orientation in radians
-  std::cout << "Filtered centroid coordinates x,y: " << cntr.x << "," << cntr.y << std::endl;
-  // std::cout << "Filtered P1 x,y: " << p1.x << "," << p1.y << std::endl;
-  // std::cout << "Filtered P2 x,y: " << p2.x << "," << p2.y << std::endl;
-  return angle;
-}
-
-class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 3, 3>
-{
-protected:
-  void updateJf(const double _incT)
-  {
-    mJf.setIdentity();
-    //mJf.block<2, 2>(0, 2) = Eigen::Matrix<float, 2, 2>::Identity() * _incT;
-  }
-  void updateHZk()
-  {
-    float fx=535.4;
-    float fy=539.2;
-
-    mHZk << fx/mXfa(0) , 0 , -fx*mXfa(0)/(mXfa(3)^2)
-            0 , fy/mXfa(1) , -fy*mXfa(1)/(mXfa(3)^2)
-            0 , 0 , 1;
-  }
-  void updateJh()
-  {
-    mJh.setIdentity();
-  }
 }
 
 ////////////////////////////
@@ -142,21 +98,45 @@ int ratio = 3;
 int kernel_size = 3;
 std::string window_name = "Edge Map";
 
+class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 3, 3>
+{
+protected:
+  void updateJf(const double _incT)
+  {
+    mJf.setIdentity();
+    //mJf.block<2, 2>(0, 2) = Eigen::Matrix<float, 2, 2>::Identity() * _incT;
+  }
+  void updateHZk()
+  {
+    float fx = 535.4;
+    float fy = 539.2;
+
+    mHZk << fx / mXfk[0], 0, -fx * mXfk[0] / (mXfk[3] * mXfk[3]),
+            0 , fy / mXfk[1], -fy * mXfk[1] / (mXfk[3] * mXfk[3]),
+            0, 0, 1;
+  }
+  void updateJh()
+  {
+    mJh.setIdentity();
+  }
+};
+
 class ImageProcessor
 {
   ros::NodeHandle nh_;
   image_transport::ImageTransport it_;
   image_transport::Subscriber img_sub_;
-  g_pub_;
+  image_transport::Publisher img_pub_;
+  //ros::Publisher pipe_pub_;
   // tf::TransformBroadcaster tf_br_;
 public:
   ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
-                                       it_(nh_)
+                                                      it_(nh_)
   {
-    image_transport::Publisher im
-        img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
+    img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
-    Ekf=_Ekf;
+    //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
+    ekf = _ekf;
   }
 
   ~ImageProcessor() {}
@@ -235,6 +215,7 @@ public:
     /////////// PCA
     t2 = clock();
     Mat gray;
+    Mat filtered_src;
     cvtColor(dst, gray, COLOR_BGR2GRAY);
     // Convert image to binary
     Mat bw;
@@ -253,11 +234,21 @@ public:
       // Draw each contour only for visualisation purposes
       drawContours(src, contours, static_cast<int>(i), Scalar(0, 0, 255), 2, 8, hierarchy, 0);
       // Find the orientation of each shape
-      vector<Point> centroid;
+      vector<double> centroid;
       getOrientation(contours[i], centroid, src);
       // Filter orientation of each shape wit EKF
-      cv::Mat filtered_src = src.clone();
-      filterCentroid(centroid, filtered_src);
+      filtered_src = src.clone();
+
+      float altitude=0; //666: Altitude!!!!!!!!!
+      Eigen::Matrix<float, 3, 1> z;
+      z << centroid[0],centroid[1],altitude; // New observation
+
+      double rate = 0.2;
+      ekf.stepEKF(z, rate);
+      Eigen::Matrix<float, 3, 1> filteredCntr = ekf.state();
+      Point filtCentroid ={filteredCntr[0] ,filteredCntr[1]};
+      circle(filtered_src, filtCentroid, 3, Scalar(255, 0, 255), 2);
+      std::cout << "Filtered centroid coordinates x,y: " << filteredCntr[0] << "," << filteredCntr[1] << std::endl;
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -269,9 +260,8 @@ public:
     double time2 = (double(t3 - t2) / CLOCKS_PER_SEC);
     cout << "Execution Time PCA: " << time2 << endl;
   }
-  
-  AxisEKF ekf;
 
+  AxisEKF ekf;
 };
 
 int main(int argc, char **argv)
@@ -292,7 +282,7 @@ int main(int argc, char **argv)
 
   ros::init(argc, argv, "pipe_detection");
   ros::NodeHandle n("~");
-  ImageProcessor im(n,Axis_ekf);
+  ImageProcessor im(n, Axis_ekf);
   ros::spin();
   return 0;
 }
