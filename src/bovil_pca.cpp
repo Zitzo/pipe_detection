@@ -108,17 +108,22 @@ double filterAxis(const vector<Point> &pipeAxis, vector<Point> &filteredPipeAxis
   return angle;
 }
 
-class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 4, 2>
+class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 3, 3>
 {
 protected:
   void updateJf(const double _incT)
   {
     mJf.setIdentity();
-    mJf.block<2, 2>(0, 2) = Eigen::Matrix<float, 2, 2>::Identity() * _incT;
+    //mJf.block<2, 2>(0, 2) = Eigen::Matrix<float, 2, 2>::Identity() * _incT;
   }
   void updateHZk()
   {
-    mHZk = mXak.block<2, 1>(0, 0);
+    float fx=535.4;
+    float fy=539.2;
+
+    mHZk << fx/mXfa(0) , 0 , -fx*mXfa(0)/(mXfa(3)^2)
+            0 , fy/mXfa(1) , -fy*mXfa(1)/(mXfa(3)^2)
+            0 , 0 , 1;
   }
   void updateJh()
   {
@@ -138,16 +143,15 @@ int kernel_size = 3;
 std::string window_name = "Edge Map";
 
 // Initialize EKF
-Eigen::Matrix<float, 4, 4> mQ; // State covariance
+Eigen::Matrix<float, 3, 3> mQ; // State covariance
 mQ.setIdentity();
-mQ.block<2, 2>(0, 0) *= 0.01;
-mQ.block<2, 2>(2, 2) *= 0.03;
-Eigen::Matrix<float, 2, 2> mR; // Observation covariance
+mQ.block<3, 3>(0, 0) *= 0.01;
+mQ.block<3, 3>(1, 1) *= 0.01;
+mQ.block<3, 3>(2, 2) *= 0.01;
+Eigen::Matrix<float, 3, 3> mR; // Observation covariance
 mR.setIdentity();
-mR.block<2, 2>(0, 0) *= NOISE_LEVEL * 2;
-Eigen::Matrix<float, 4, 1> x0;
-x0 << 1, 0, // (x,y)
-    0, 0;   // (v_x, v_y)
+Eigen::Matrix<float, 3, 1> x0;
+x0 << 0, 0, 1; // (x,y)
 // Create EKF
 AxisEKF ekf;
 ekf.setUpEKF(mQ, mR, x0);
