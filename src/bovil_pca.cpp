@@ -79,11 +79,6 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, Ma
   // Add cntr point and two eigen_vecs and eigen_val (p1 and p2)
   pipeCentroid.push_back(cntr.x);
   pipeCentroid.push_back(cntr.y);
-  // for (int i = 0; i < 2; ++i)
-  // {
-  //   pipeCentroid.insert(pipeCentroid.end(), eigen_vecs[i].begin(), eigen_vecs[i].end());
-  //   pipeCentroid.insert(pipeCentroid.end(), eigen_val[i].begin(), eigen_val[i].end());
-  // }
   return angle;
 }
 
@@ -108,16 +103,21 @@ protected:
   }
   void updateHZk()
   {
-    float fx = 535.4;
-    float fy = 539.2;
-
-    mHZk << fx / mXfk[0], 0, -fx * mXfk[0] / (mXfk[3] * mXfk[3]),
-            0 , fy / mXfk[1], -fy * mXfk[1] / (mXfk[3] * mXfk[3]),
-            0, 0, 1;
+    float fx = 798.936495;
+    float fy = 800.331389;
+    float Cx = 327.376758;
+    float Cy = 258.200534;
+    mHZk << (fx*mXfk[0]/mXfk[2])+Cx,
+            (fy*mXfk[1]/mXfk[2])+Cy, 
+            1;
   }
   void updateJh()
   {
-    mJh.setIdentity();
+    float fx = 798.936495;
+    float fy = 800.331389;
+    mJh << fx/mXfk[0], 0, -fx*mXfk[0]/(mXfk[2]*mXfk[2]),
+           0, fy/mXfk[1], -fy*mXfk[1]/(mXfk[2]*mXfk[2]),
+           0, 0, 1;
   }
 };
 
@@ -215,7 +215,7 @@ public:
     /////////// PCA
     t2 = clock();
     Mat gray;
-    Mat filtered_src;
+    Mat filtered_src = src.clone();
     cvtColor(dst, gray, COLOR_BGR2GRAY);
     // Convert image to binary
     Mat bw;
@@ -237,18 +237,26 @@ public:
       vector<double> centroid;
       getOrientation(contours[i], centroid, src);
       // Filter orientation of each shape wit EKF
-      filtered_src = src.clone();
-
-      float altitude=0; //666: Altitude!!!!!!!!!
+      float altitude = 1; //666: Altitude!!!!!!!!!
       Eigen::Matrix<float, 3, 1> z;
-      z << centroid[0],centroid[1],altitude; // New observation
+      z << centroid[0], centroid[1], altitude; // New observation
 
       double rate = 0.2;
       ekf.stepEKF(z, rate);
-      Eigen::Matrix<float, 3, 1> filteredCntr = ekf.state();
-      Point filtCentroid ={filteredCntr[0] ,filteredCntr[1]};
+      Eigen::Matrix<float, 3, 1> XfilteredCntr = ekf.state();
+      // State model to observation model to draw it
+      // Camera intrinsics
+      float fx = 798.936495;
+      float fy = 800.331389;
+      float cx = 327.376758;
+      float cy = 258.200534;
+      Eigen::Matrix<float, 3, 1> ZfilteredCntr;
+      ZfilteredCntr.setIdentity();
+      ZfilteredCntr << fx*XfilteredCntr[0]/XfilteredCntr[2]+cx , fy*XfilteredCntr[1]/XfilteredCntr[2]+cy , 1;
+      // Filtered centroid 
+      Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
       circle(filtered_src, filtCentroid, 3, Scalar(255, 0, 255), 2);
-      std::cout << "Filtered centroid coordinates x,y: " << filteredCntr[0] << "," << filteredCntr[1] << std::endl;
+      std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -261,21 +269,26 @@ public:
     cout << "Execution Time PCA: " << time2 << endl;
   }
 
+public:
   AxisEKF ekf;
 };
 
 int main(int argc, char **argv)
 {
+  // Camera intrinsics
+  float fx = 798.936495;
+  float fy = 800.331389;
+  float cx = 327.376758;
+  float cy = 258.200534;
   // Initialize EKF
   Eigen::Matrix<float, 3, 3> mQ; // State covariance
   mQ.setIdentity();
   mQ.block<3, 3>(0, 0) *= 0.01;
-  mQ.block<3, 3>(1, 1) *= 0.01;
-  mQ.block<3, 3>(2, 2) *= 0.01;
   Eigen::Matrix<float, 3, 3> mR; // Observation covariance
   mR.setIdentity();
   Eigen::Matrix<float, 3, 1> x0;
-  x0 << 0, 0, 1; // (x,y)
+
+  x0 << (700-cx)/fx, (300-cy)/fy, 1; // (x,y)
   // Create EKF
   AxisEKF Axis_ekf;
   Axis_ekf.setUpEKF(mQ, mR, x0);
