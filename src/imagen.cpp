@@ -11,7 +11,7 @@ int main(int argc, char **argv)
   image_transport::ImageTransport it(nh);
 
   image_transport::Publisher pub = it.advertise("camera/image", 1);
-  ros::Rate loop_rate(0.2);
+  ros::Rate loop_rate(5);
 
   while (nh.ok())
   {
