@@ -215,7 +215,7 @@ public:
     /////////// PCA
     t2 = clock();
     Mat gray;
-    //Mat filtered_src = src.clone();
+    Mat filtered_src = src.clone();
     cvtColor(dst, gray, COLOR_BGR2GRAY);
     // Convert image to binary
     Mat bw;
@@ -255,7 +255,7 @@ public:
       ZfilteredCntr << fx*XfilteredCntr[0]/XfilteredCntr[2]+cx , fy*XfilteredCntr[1]/XfilteredCntr[2]+cy , 1;
       // Filtered centroid 
       Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
-      //circle(filtered_src, filtCentroid, 3, Scalar(255, 0, 255), 2);
+      circle(filtered_src, filtCentroid, 3, Scalar(255, 0, 255), 2);
       std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
     }
     imshow("output1", src);
