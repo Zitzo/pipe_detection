@@ -15,7 +15,7 @@ int main(int argc, char **argv)
 
   while (nh.ok())
   {
-    cv::Mat image = cv::imread("/home/alejandro/pipe_detection/src/pipe_detection/src/test1/out" + std::to_string(i) + ".jpg", CV_LOAD_IMAGE_COLOR);
+    cv::Mat image = cv::imread("/home/sanso92/pipe/datasets/test1/out" + std::to_string(i) + ".jpg", CV_LOAD_IMAGE_COLOR);
     // Publico la imagen en un tópico para que el otro programa se suscriba e intente identificar la tuberia
     //cv::Mat image = cv::imread("/home/alejandro/pipe_detection/src/pipe_detection/src/out28.jpg", CV_LOAD_IMAGE_COLOR);
     //cv::imshow("hola", image);
