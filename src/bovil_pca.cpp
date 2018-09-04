@@ -21,7 +21,7 @@ unsigned t0, t1, t2, t3;
 
 // Function declarations for PCA
 void drawAxis(Mat &, Point, Point, Scalar, const float);
-double getOrientation(const vector<Point> &, vector<Point> &, Mat &);
+double getOrientation(const vector<Point> &, vector<Point> &, vector<Point> &, Mat &);
 void drawAxis(Mat &img, Point p, Point q, Scalar colour, const float scale = 0.2)
 {
   double angle;
@@ -42,7 +42,7 @@ void drawAxis(Mat &img, Point p, Point q, Scalar colour, const float scale = 0.2
   p.y = (int)(q.y + 9 * sin(angle - CV_PI / 4));
   line(img, p, q, colour, 1, CV_AA);
 }
-double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, Mat &img)
+double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, vector<double> &pipeP1, Mat &img)
 {
   //Construct a buffer used by the pca analysis
   int sz = static_cast<int>(pts.size());
@@ -79,6 +79,8 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, Ma
   // Add cntr point and two eigen_vecs and eigen_val (p1 and p2)
   pipeCentroid.push_back(cntr.x);
   pipeCentroid.push_back(cntr.y);
+  pipeP1.push_back(p1.x);
+  pipeP1.push_back(p1.y);
   return angle;
 }
 
@@ -93,7 +95,7 @@ int ratio = 3;
 int kernel_size = 3;
 std::string window_name = "Edge Map";
 
-class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 3, 3>
+class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
 {
 protected:
   void updateJf(const double _incT)
@@ -109,15 +111,21 @@ protected:
     float Cy = 258.200534;
     mHZk << (fx*mXfk[0]/mXfk[2])+Cx,
             (fy*mXfk[1]/mXfk[2])+Cy, 
+            1,
+            (fx*mXfk[3]/mXfk[5])+Cx,
+            (fy*mXfk[4]/mXfk[5])+Cy, 
             1;
   }
   void updateJh()
   {
     float fx = 798.936495;
     float fy = 800.331389;
-    mJh << fx/mXfk[0], 0, -fx*mXfk[0]/(mXfk[2]*mXfk[2]),
-           0, fy/mXfk[1], -fy*mXfk[1]/(mXfk[2]*mXfk[2]),
-           0, 0, 1;
+    mJh << fx/mXfk[0], 0, -fx*mXfk[0]/(mXfk[2]*mXfk[2]),0,0,0,
+           0, fy/mXfk[1], -fy*mXfk[1]/(mXfk[2]*mXfk[2]),0,0,0,
+           0, 0, 1, 0, 0, 0,
+           0, 0, 0, fx/mXfk[3], 0, -fx*mXfk[3]/(mXfk[5]*mXfk[5]),
+           0, 0, 0, 0, fy/mXfk[4], -fy*mXfk[4]/(mXfk[5]*mXfk[5]),
+           0, 0, 0, 0, 0, 1;
   }
 };
 
@@ -234,28 +242,38 @@ public:
       drawContours(src, contours, static_cast<int>(i), Scalar(0, 0, 255), 2, 8, hierarchy, 0);
       // Find the orientation of each shape
       vector<double> centroid;
-      getOrientation(contours[i], centroid, src);
+      vector<double> p1;
+      getOrientation(contours[i], centroid, p1,  src);
       // Filter orientation of each shape wit EKF
       float altitude = 1; //666: Altitude!!!!!!!!!
-      Eigen::Matrix<float, 3, 1> z;
-      z << centroid[0], centroid[1], altitude; // New observation
+      Eigen::Matrix<float, 6, 1> z;
+      z << centroid[0], centroid[1], altitude,
+           p1[0], p1[1], altitude; // New observation
 
-      double rate = 0.2;
+      double rate = 0.2;  //666: Rate!!!!!!!!!
       ekf.stepEKF(z, rate);
-      Eigen::Matrix<float, 3, 1> XfilteredCntr = ekf.state();
+      Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
       // State model to observation model to draw it
       // Camera intrinsics
       float fx = 798.936495;
       float fy = 800.331389;
       float cx = 327.376758;
       float cy = 258.200534;
-      Eigen::Matrix<float, 3, 1> ZfilteredCntr;
+      Eigen::Matrix<float, 6, 1> ZfilteredCntr;
       ZfilteredCntr.setIdentity();
-      ZfilteredCntr << fx*XfilteredCntr[0]/XfilteredCntr[2]+cx , fy*XfilteredCntr[1]/XfilteredCntr[2]+cy , 1;
+      ZfilteredCntr << fx*XfilteredCntr[0]/XfilteredCntr[2]+cx , fy*XfilteredCntr[1]/XfilteredCntr[2]+cy , 1,
+                       fx*XfilteredCntr[3]/XfilteredCntr[5]+cx , fy*XfilteredCntr[4]/XfilteredCntr[5]+cy , 1;
       // Filtered centroid 
       Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
+      Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
       circle(src, filtCentroid, 3, Scalar(0, 255, 255), 2);
+      circle(src, filtP1, 3, Scalar(0, 255, 255), 2);
+      drawAxis(src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
+      Point P1C = filtP1-filtCentroid;
+      double filteredAngle = atan2(P1C.y, P1C.x); 
       std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
+      std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
+      std::cout << "Filtered angle: " << filteredAngle << std::endl;
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -279,14 +297,15 @@ int main(int argc, char **argv)
   float cx = 327.376758;
   float cy = 258.200534;
   // Initialize EKF
-  Eigen::Matrix<float, 3, 3> mQ; // State covariance
+  Eigen::Matrix<float, 6, 6> mQ; // State covariance
   mQ.setIdentity();
-  mQ.block<3, 3>(0, 0) *= 0.01;
-  Eigen::Matrix<float, 3, 3> mR; // Observation covariance
+  mQ *= 0.01;
+  Eigen::Matrix<float, 6, 6> mR; // Observation covariance
   mR.setIdentity();
-  Eigen::Matrix<float, 3, 1> x0;
+  Eigen::Matrix<float, 6, 1> x0;
 
-  x0 << (700-cx)/fx, (300-cy)/fy, 1; // (x,y)
+  x0 << (700-cx)/fx, (300-cy)/fy, 1,
+        (700-cx)/fx, (300-cy)/fy, 1; 
   // Create EKF
   AxisEKF Axis_ekf;
   Axis_ekf.setUpEKF(mQ, mR, x0);
