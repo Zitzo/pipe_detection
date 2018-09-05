@@ -12,7 +12,7 @@
 #include <rgbd_tools/state_filtering/ExtendedKalmanFilter.h>
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include <ctime> 
+#include <ctime>
 #include <rgbd_tools/state_filtering/ExtendedKalmanFilter.h>
 #include "std_msgs/Float64.h"
 #include "geometry_msgs/Twist.h"
@@ -77,9 +77,11 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, ve
   drawAxis(img, cntr, p1, Scalar(0, 255, 0), 1);
   drawAxis(img, cntr, p2, Scalar(255, 255, 0), 5);
   double angle = atan2(eigen_vecs[0].y, eigen_vecs[0].x); // orientation in radians
+  angle = angle * 180 / 3.14159265;
   std::cout << "Centroid coordinates x,y: " << cntr.x << "," << cntr.y << std::endl;
   std::cout << "P1 x,y: " << p1.x << "," << p1.y << std::endl;
   std::cout << "P2 x,y: " << p2.x << "," << p2.y << std::endl;
+  std::cout << "Angle: " << angle << std::endl;
   // Add cntr point and two eigen_vecs and eigen_val (p1 and p2)
   pipeCentroid.push_back(cntr.x);
   pipeCentroid.push_back(cntr.y);
@@ -90,10 +92,7 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, ve
 
 ////////////////////////////
 cv::Mat src_gray;
-    angle = angle*180/3.14159265;
-    std::cout << "Angle: " << angle << std::endl;
 cv::Mat dst, detected_edges;
-
 int edgeThresh = 1;
 int lowThreshold = 30;
 int const max_lowThreshold = 100;
@@ -115,23 +114,23 @@ protected:
     float fy = 800.331389;
     float Cx = 327.376758;
     float Cy = 258.200534;
-    mHZk << (fx*mXfk[0]/mXfk[2])+Cx,
-            (fy*mXfk[1]/mXfk[2])+Cy, 
-            1,
-            (fx*mXfk[3]/mXfk[5])+Cx,
-            (fy*mXfk[4]/mXfk[5])+Cy, 
-            1;
+    mHZk << (fx * mXfk[0] / mXfk[2]) + Cx,
+        (fy * mXfk[1] / mXfk[2]) + Cy,
+        1,
+        (fx * mXfk[3] / mXfk[5]) + Cx,
+        (fy * mXfk[4] / mXfk[5]) + Cy,
+        1;
   }
   void updateJh()
   {
     float fx = 798.936495;
     float fy = 800.331389;
-    mJh << fx/mXfk[0], 0, -fx*mXfk[0]/(mXfk[2]*mXfk[2]),0,0,0,
-           0, fy/mXfk[1], -fy*mXfk[1]/(mXfk[2]*mXfk[2]),0,0,0,
-           0, 0, 1, 0, 0, 0,
-           0, 0, 0, fx/mXfk[3], 0, -fx*mXfk[3]/(mXfk[5]*mXfk[5]),
-           0, 0, 0, 0, fy/mXfk[4], -fy*mXfk[4]/(mXfk[5]*mXfk[5]),
-           0, 0, 0, 0, 0, 1;
+    mJh << fx / mXfk[0], 0, -fx * mXfk[0] / (mXfk[2] * mXfk[2]), 0, 0, 0,
+        0, fy / mXfk[1], -fy * mXfk[1] / (mXfk[2] * mXfk[2]), 0, 0, 0,
+        0, 0, 1, 0, 0, 0,
+        0, 0, 0, fx / mXfk[3], 0, -fx * mXfk[3] / (mXfk[5] * mXfk[5]),
+        0, 0, 0, 0, fy / mXfk[4], -fy * mXfk[4] / (mXfk[5] * mXfk[5]),
+        0, 0, 0, 0, 0, 1;
   }
 };
 
@@ -142,7 +141,7 @@ class ImageProcessor
   image_transport::Subscriber img_sub_;
   image_transport::Publisher img_pub_;
   ros::Publisher pipe_pub_;
- // tf::TransformBroadcaster tf_br_;
+  // tf::TransformBroadcaster tf_br_;
 public:
   ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
                                                       it_(nh_)
@@ -150,7 +149,7 @@ public:
     img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
     pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
-    
+
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
     ekf = _ekf;
   }
@@ -241,30 +240,33 @@ public:
     findContours(bw, contours, hierarchy, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
     for (size_t i = 0; i < contours.size(); ++i)
     {
-        // Calculate the area of each contour
-        double area = contourArea(contours[i]);
-        // Ignore contours that are too small or too large, MODIFIED AS PIPE IS A VERY LARGE OBJECT!!!
-        if (area < 1e4 || 1e8 < area) continue;
-        // Draw each contour only for visualisation purposes
-        drawContours(src, contours, static_cast<int>(i), Scalar(0, 0, 255), 2, 8, hierarchy, 0);
-        // Find the orientation of each shape
-    //Publish angle
-    geometry_msgs::Twist pipe_data;
-    pipe_data.linear.x = pipe_center.x;
-    pipe_data.linear.y = pipe_center.y;
-    pipe_data.linear.z = 0;
-    pipe_data.angular.x = ang;
-    pipe_data.angular.y = 0;
-    pipe_data.angular.y = 0;
-    pipe_pub_.publish(pipe_data);
-      getOrientation(contours[i], centroid, p1,  src);
+      // Calculate the area of each contour
+      double area = contourArea(contours[i]);
+      // Ignore contours that are too small or too large, MODIFIED AS PIPE IS A VERY LARGE OBJECT!!!
+      if (area < 1e4 || 1e8 < area)
+        continue;
+      // Draw each contour only for visualisation purposes
+      drawContours(src, contours, static_cast<int>(i), Scalar(0, 0, 255), 2, 8, hierarchy, 0);
+      vector<double> p1;
+      vector<double> centroid;
+      // Find the orientation of each shape
+      double ang = getOrientation(contours[i], centroid, p1, src);
+      //Publish angle
+      geometry_msgs::Twist pipe_data;
+      pipe_data.linear.x = pipe_center.x;
+      pipe_data.linear.y = pipe_center.y;
+      pipe_data.linear.z = 0;
+      pipe_data.angular.x = ang;
+      pipe_data.angular.y = 0;
+      pipe_data.angular.y = 0;
+      pipe_pub_.publish(pipe_data);
       // Filter orientation of each shape wit EKF
       float altitude = 1; //666: Altitude!!!!!!!!!
       Eigen::Matrix<float, 6, 1> z;
       z << centroid[0], centroid[1], altitude,
-           p1[0], p1[1], altitude; // New observation
+          p1[0], p1[1], altitude; // New observation
 
-      double rate = 0.2;  //666: Rate!!!!!!!!!
+      double rate = 0.2; //666: Rate!!!!!!!!!
       ekf.stepEKF(z, rate);
       Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
       // State model to observation model to draw it
@@ -275,22 +277,20 @@ public:
       float cy = 258.200534;
       Eigen::Matrix<float, 6, 1> ZfilteredCntr;
       ZfilteredCntr.setIdentity();
-      ZfilteredCntr << fx*XfilteredCntr[0]/XfilteredCntr[2]+cx , fy*XfilteredCntr[1]/XfilteredCntr[2]+cy , 1,
-                       fx*XfilteredCntr[3]/XfilteredCntr[5]+cx , fy*XfilteredCntr[4]/XfilteredCntr[5]+cy , 1;
-      // Filtered centroid 
+      ZfilteredCntr << fx * XfilteredCntr[0] / XfilteredCntr[2] + cx, fy * XfilteredCntr[1] / XfilteredCntr[2] + cy, 1,
+          fx * XfilteredCntr[3] / XfilteredCntr[5] + cx, fy * XfilteredCntr[4] / XfilteredCntr[5] + cy, 1;
+      // Filtered centroid
       Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
       Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
       circle(src, filtCentroid, 3, Scalar(0, 255, 255), 2);
       circle(src, filtP1, 3, Scalar(0, 255, 255), 2);
       drawAxis(src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
-      Point P1C = filtP1-filtCentroid;
-      double filteredAngle = atan2(P1C.y, P1C.x); 
+      Point P1C = filtP1 - filtCentroid;
+      double filteredAngle = atan2(P1C.y, P1C.x);
       std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
       std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
       std::cout << "Filtered angle: " << filteredAngle << std::endl;
-      vector<double> p1;
-      // Find the orientation of each shape
-      vector<double> centroid;
+      
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -321,8 +321,8 @@ int main(int argc, char **argv)
   mR.setIdentity();
   Eigen::Matrix<float, 6, 1> x0;
 
-  x0 << (700-cx)/fx, (300-cy)/fy, 1,
-        (700-cx)/fx, (300-cy)/fy, 1; 
+  x0 << (700 - cx) / fx, (300 - cy) / fy, 1,
+      (700 - cx) / fx, (300 - cy) / fy, 1;
   // Create EKF
   AxisEKF Axis_ekf;
   Axis_ekf.setUpEKF(mQ, mR, x0);
