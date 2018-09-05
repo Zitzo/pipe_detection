@@ -23,6 +23,17 @@
         "iosfwd": "cpp",
         "ratio": "cpp",
         "thread": "cpp",
-        "typeindex": "cpp"
+        "typeindex": "cpp",
+        "*.ipp": "cpp",
+        "clocale": "cpp",
+        "csignal": "cpp",
+        "*.tcc": "cpp",
+        "codecvt": "cpp",
+        "condition_variable": "cpp",
+        "future": "cpp",
+        "mutex": "cpp",
+        "system_error": "cpp",
+        "cinttypes": "cpp",
+        "core": "cpp"
     }
 }
