@@ -143,8 +143,8 @@ class ImageProcessor
   ros::Publisher pipe_pub_;
   // tf::TransformBroadcaster tf_br_;
 public:
-  ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
-                                                      it_(nh_)
+  ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf, Eigen::Matrix<float, 3, 3> _intrinsic) : nh_(n),
+                                                                                             it_(nh_)
   {
     img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
@@ -152,6 +152,7 @@ public:
 
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
     ekf = _ekf;
+    intrinsic = _intrinsic;
   }
 
   ~ImageProcessor() {}
@@ -270,15 +271,10 @@ public:
       ekf.stepEKF(z, rate);
       Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
       // State model to observation model to draw it
-      // Camera intrinsics
-      float fx = 798.936495;
-      float fy = 800.331389;
-      float cx = 327.376758;
-      float cy = 258.200534;
       Eigen::Matrix<float, 6, 1> ZfilteredCntr;
       ZfilteredCntr.setIdentity();
-      ZfilteredCntr << fx * XfilteredCntr[0] / XfilteredCntr[2] + cx, fy * XfilteredCntr[1] / XfilteredCntr[2] + cy, 1,
-          fx * XfilteredCntr[3] / XfilteredCntr[5] + cx, fy * XfilteredCntr[4] / XfilteredCntr[5] + cy, 1;
+      ZfilteredCntr << intrinsic(0, 0) * XfilteredCntr[0] / XfilteredCntr[2] + intrinsic(0, 2), intrinsic(1, 1) * XfilteredCntr[1] / XfilteredCntr[2] + intrinsic(1, 2), 1,
+          intrinsic(0, 0) * XfilteredCntr[3] / XfilteredCntr[5] + intrinsic(0, 2), intrinsic(1, 1) * XfilteredCntr[4] / XfilteredCntr[5] + intrinsic(1, 2), 1;
       // Filtered centroid
       Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
       Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
@@ -290,7 +286,6 @@ public:
       std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
       std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
       std::cout << "Filtered angle: " << filteredAngle << std::endl;
-      
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -304,15 +299,20 @@ public:
 
 public:
   AxisEKF ekf;
+  Eigen::Matrix<float, 3, 3> intrinsic;
 };
 
 int main(int argc, char **argv)
 {
   // Camera intrinsics
-  float fx = 798.936495;
-  float fy = 800.331389;
-  float cx = 327.376758;
-  float cy = 258.200534;
+  Eigen::Matrix<float, 3, 3> intrinsic;
+  intrinsic << 726.429011, 0, 283.809411,
+      0, 721.683494, 209.109682,
+      0, 0, 1;
+  // float fx = 798.936495;
+  // float fy = 800.331389;
+  // float cx = 327.376758;
+  // float cy = 258.200534;
   // Initialize EKF
   Eigen::Matrix<float, 6, 6> mQ; // State covariance
   mQ.setIdentity();
@@ -320,9 +320,8 @@ int main(int argc, char **argv)
   Eigen::Matrix<float, 6, 6> mR; // Observation covariance
   mR.setIdentity();
   Eigen::Matrix<float, 6, 1> x0;
-
-  x0 << (700 - cx) / fx, (300 - cy) / fy, 1,
-      (700 - cx) / fx, (300 - cy) / fy, 1;
+  x0 << (700 - intrinsic(0, 2)) / intrinsic(0, 0), (300 - intrinsic(1, 2)) / intrinsic(1, 1), 1,
+      (700 - intrinsic(0, 2)) / intrinsic(0, 0), (300 - intrinsic(1, 2)) / intrinsic(1, 1), 1;
   // Create EKF
   AxisEKF Axis_ekf;
   Axis_ekf.setUpEKF(mQ, mR, x0);
