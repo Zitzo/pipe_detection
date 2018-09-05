@@ -259,31 +259,10 @@ public:
       pipe_data.angular.y = 0;
       pipe_pub_.publish(pipe_data);
       // Filter orientation of each shape wit EKF
-      float altitude = 1; //666: Altitude!!!!!!!!!
+      float altitude = pipe_data.linear.z; //666: Altitude!!!!!!!!!
       if (mKalmanFilter)
       {
-        Eigen::Matrix<float, 6, 1> z;
-        z << centroid[0], centroid[1], altitude,
-            p1[0], p1[1], altitude; // New observation
-        double rate = 0.2; //666: Rate!!!!!!!!!
-        ekf.stepEKF(z, rate);
-        Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
-        // State model to observation model to draw it
-        Eigen::Matrix<float, 6, 1> ZfilteredCntr;
-        ZfilteredCntr.setIdentity();
-        ZfilteredCntr << mIntrinsic(0, 0) * XfilteredCntr[0] / XfilteredCntr[2] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[1] / XfilteredCntr[2] + mIntrinsic(1, 2), 1,
-            mIntrinsic(0, 0) * XfilteredCntr[3] / XfilteredCntr[5] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[4] / XfilteredCntr[5] + mIntrinsic(1, 2), 1;
-        // Filtered centroid
-        Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
-        Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
-        circle(src, filtCentroid, 3, Scalar(0, 255, 255), 2);
-        circle(src, filtP1, 3, Scalar(0, 255, 255), 2);
-        drawAxis(src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
-        Point P1C = filtP1 - filtCentroid;
-        double filteredAngle = atan2(P1C.y, P1C.x);
-        std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
-        std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
-        std::cout << "Filtered angle: " << filteredAngle << std::endl;
+        computeKalmanFilter(src, centroid, p1, altitude);
       }
     }
     imshow("output1", src);
@@ -296,6 +275,38 @@ public:
     cout << "Execution Time PCA: " << time2 << endl;
   }
 
+  bool computeKalmanFilter(Mat &_src, const vector<double> _centroid, const vector<double> _p1, const float _altitude)
+  {
+    // Adding new observation
+    Eigen::Matrix<float, 6, 1> z;
+    // We assume z cte between centroid and dominant axis
+    z << _centroid[0], _centroid[1], _altitude,
+        _p1[0], _p1[1], _altitude;
+    double rate = 0.2; //666: Rate!!!!!!!!!
+
+    // New step in EKF
+    ekf.stepEKF(z, rate);
+    Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
+
+    // State model to observation model to draw it
+    Eigen::Matrix<float, 6, 1> ZfilteredCntr;
+    ZfilteredCntr.setIdentity();
+    ZfilteredCntr << mIntrinsic(0, 0) * XfilteredCntr[0] / XfilteredCntr[2] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[1] / XfilteredCntr[2] + mIntrinsic(1, 2), 1,
+        mIntrinsic(0, 0) * XfilteredCntr[3] / XfilteredCntr[5] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[4] / XfilteredCntr[5] + mIntrinsic(1, 2), 1;
+
+    // Filtered centroid
+    Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
+    Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
+    circle(_src, filtCentroid, 3, Scalar(0, 255, 255), 2);
+    circle(_src, filtP1, 3, Scalar(0, 255, 255), 2);
+    drawAxis(_src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
+    Point P1C = filtP1 - filtCentroid;
+    double filteredAngle = atan2(P1C.y, P1C.x);
+    std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
+    std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
+    std::cout << "Filtered angle: " << filteredAngle << std::endl;
+  }
+
 public:
   AxisEKF ekf;
   Eigen::Matrix<float, 3, 3> mIntrinsic;
@@ -306,7 +317,7 @@ int main(int argc, char **argv)
 {
   // Camera intrinsics
   Eigen::Matrix<float, 3, 3> intrinsic;
-  intrinsic << 726.429011, 0, 283.809411,   // Parrot intrinsic parameters
+  intrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
       0, 721.683494, 209.109682,
       0, 0, 1;
   // float fx = 798.936495;
