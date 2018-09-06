@@ -16,7 +16,9 @@
 #include <rgbd_tools/state_filtering/ExtendedKalmanFilter.h>
 #include "std_msgs/Float64.h"
 #include "geometry_msgs/Twist.h"
+#include "ardrone_autonomy/Navdata.h"
 //#include <tf/transform_broadcaster.h>
+
 
 using namespace std;
 using namespace cv;
@@ -61,6 +63,8 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, ve
   //Store the center of the object
   Point cntr = Point(static_cast<int>(pca_analysis.mean.at<double>(0, 0)),
                      static_cast<int>(pca_analysis.mean.at<double>(0, 1)));
+  pipe_center.x = cntr.x;
+  pipe_center.y = cntr.y;
   //Store the eigenvalues and eigenvectors
   vector<Point2d> eigen_vecs(2);
   vector<double> eigen_val(2);
@@ -99,6 +103,13 @@ int const max_lowThreshold = 100;
 int ratio = 3;
 int kernel_size = 3;
 std::string window_name = "Edge Map";
+float altitude;
+
+ 
+void altitudeCallback(const ardrone_autonomy::Navdata imu)
+{
+  altitude = imu.altd;
+}
 
 class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
 {
@@ -141,20 +152,37 @@ class ImageProcessor
   image_transport::Subscriber img_sub_;
   image_transport::Publisher img_pub_;
   ros::Publisher pipe_pub_;
-  // tf::TransformBroadcaster tf_br_;
-public:
-  ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
-                                                      it_(nh_)
+  ros::Subscriber alt_sub_;
+  //ros::Subscriber sub_alt_
+      // tf::TransformBroadcaster tf_br_;
+      public : ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
+                                                                   it_(nh_)
   {
-    img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
+    img_sub_ = it_.subscribe("/ardrone/bottom/image_raw", 1, &ImageProcessor::image_callback, this);
+   // sub_alt_ = n.subscribe("/ardrone/navdata", 1000, altitude_Callback);
     img_pub_ = it_.advertise("/output_image", 1);
     pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
+    alt_sub_ = n.subscribe("/ardrone/navdata", 1000, altitudeCallback);
 
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
     ekf = _ekf;
   }
 
   ~ImageProcessor() {}
+
+ // void altitude_Callback(const sensor_msgs::ImageConstPtr &msg)
+ // {
+ //   cv_bridge::CvImagePtr cv_ptr;
+ //   try
+  //  {
+  //    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+  //  }
+  //  catch (cv_bridge::Exception &e)
+  //  {
+  //    ROS_ERROR("cv_bridge exception: %s", e.what());
+  //    return;
+  //  }
+ // }
 
   void image_callback(const sensor_msgs::ImageConstPtr &msg)
   {
@@ -255,8 +283,8 @@ public:
       geometry_msgs::Twist pipe_data;
       pipe_data.linear.x = pipe_center.x;
       pipe_data.linear.y = pipe_center.y;
-      pipe_data.linear.z = 0;
-      pipe_data.angular.x = ang;
+      pipe_data.linear.z = altitude/1000;
+      pipe_data.angular.x = ang+90;
       pipe_data.angular.y = 0;
       pipe_data.angular.y = 0;
       pipe_pub_.publish(pipe_data);
@@ -290,7 +318,6 @@ public:
       std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
       std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
       std::cout << "Filtered angle: " << filteredAngle << std::endl;
-      
     }
     imshow("output1", src);
     imshow("output2", gray);
