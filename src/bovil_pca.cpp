@@ -101,7 +101,7 @@ int ratio = 3;
 int kernel_size = 3;
 std::string window_name = "Edge Map";
 
-class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
+class PipeEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
 {
 protected:
   void updateJf(const double _incT)
@@ -140,16 +140,14 @@ class ImageProcessor
   ros::Publisher pipe_pub_;
   // tf::TransformBroadcaster tf_br_;
 public:
-  ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf, Eigen::Matrix<float, 3, 3> _intrinsic) : nh_(n),
-                                                                                             it_(nh_)
+  ImageProcessor(ros::NodeHandle &n) : nh_(n),
+                                       it_(nh_)
   {
     img_sub_ = it_.subscribe("/camera/image", 1, &ImageProcessor::image_callback, this);
     img_pub_ = it_.advertise("/output_image", 1);
     pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
 
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
-    ekf = _ekf;
-    mIntrinsic = _intrinsic;
   }
 
   ~ImageProcessor() {}
@@ -258,11 +256,18 @@ public:
       pipe_data.angular.y = 0;
       pipe_data.angular.y = 0;
       pipe_pub_.publish(pipe_data);
-      // Filter orientation of each shape wit EKF
-      float altitude = pipe_data.linear.z; //666: Altitude!!!!!!!!!
+      float altitude = pipe_data.linear.z; 
+      // Extended Kalman Filter 
       if (mKalmanFilter)
       {
-        computeKalmanFilter(src, centroid, p1, altitude);
+        if (!mKalmanInitialized)
+        {
+          computeKalmanFilter(src, centroid, p1, altitude);
+        }
+        else
+        {
+          initializeKalmanFilter(centroid, p1, altitude);
+        }
       }
     }
     imshow("output1", src);
@@ -275,8 +280,10 @@ public:
     cout << "Execution Time PCA: " << time2 << endl;
   }
 
+  // EKF Filter centroid, P1 (Point in the dominant axis) and angle between pipe and drone. 
   bool computeKalmanFilter(Mat &_src, const vector<double> _centroid, const vector<double> _p1, const float _altitude)
   {
+    std::cout << "Initializating Extended Kalman Filter" << std::endl;
     // Adding new observation
     Eigen::Matrix<float, 6, 1> z;
     // We assume z cte between centroid and dominant axis
@@ -307,39 +314,37 @@ public:
     std::cout << "Filtered angle: " << filteredAngle << std::endl;
   }
 
+  // Initialize EKF with first observation of centroid, p1 and altitude 
+  void initializeKalmanFilter(const vector<double> _centroid, const vector<double> _p1, const float _altitude)
+  {
+    // Camera intrinsics
+    mIntrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
+        0, 721.683494, 209.109682,
+        0, 0, 1;
+    Eigen::Matrix<float, 6, 6> mQ; // State covariance
+    mQ.setIdentity();
+    mQ *= 0.01;
+    Eigen::Matrix<float, 6, 6> mR; // Observation covariance
+    mR.setIdentity();
+    Eigen::Matrix<float, 6, 1> x0;
+    x0 << (_centroid[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_centroid[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude,
+        (_p1[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_p1[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude;
+    ekf.setUpEKF(mQ, mR, x0);
+    mKalmanInitialized=true;
+  }
+
 public:
-  AxisEKF ekf;
+  PipeEKF ekf;
   Eigen::Matrix<float, 3, 3> mIntrinsic;
   bool mKalmanFilter = true;
+  bool mKalmanInitialized = false;
 };
 
 int main(int argc, char **argv)
 {
-  // Camera intrinsics
-  Eigen::Matrix<float, 3, 3> intrinsic;
-  intrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
-      0, 721.683494, 209.109682,
-      0, 0, 1;
-  // float fx = 798.936495;
-  // float fy = 800.331389;
-  // float cx = 327.376758;
-  // float cy = 258.200534;
-  // Initialize EKF
-  Eigen::Matrix<float, 6, 6> mQ; // State covariance
-  mQ.setIdentity();
-  mQ *= 0.01;
-  Eigen::Matrix<float, 6, 6> mR; // Observation covariance
-  mR.setIdentity();
-  Eigen::Matrix<float, 6, 1> x0;
-  x0 << (700 - intrinsic(0, 2)) / intrinsic(0, 0), (300 - intrinsic(1, 2)) / intrinsic(1, 1), 1,
-      (700 - intrinsic(0, 2)) / intrinsic(0, 0), (300 - intrinsic(1, 2)) / intrinsic(1, 1), 1;
-  // Create EKF
-  AxisEKF EKF;
-  EKF.setUpEKF(mQ, mR, x0);
-
   ros::init(argc, argv, "pipe_detection");
   ros::NodeHandle n("~");
-  ImageProcessor im(n, EKF, intrinsic);
+  ImageProcessor im(n);
   ros::spin();
   return 0;
 }
