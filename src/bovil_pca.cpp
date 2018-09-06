@@ -281,9 +281,10 @@ public:
       // Find the orientation of each shape
       double ang = getOrientation(contours[i], centroid, p1, src);
       //Publish angle
-      geometry_msgs::Twist pipe_data;
-      pipe_data.linear.x = pipe_center.x;
-      pipe_data.linear.y = pipe_center.y;
+      geometry_msgs::Twist pipe_data; 
+      // xi=fx*x/z+cx, yi=fy*y/z+cy
+      pipe_data.linear.x = (altitude/1000)*(pipe_center.x - mIntrinsic(0, 2)) / mIntrinsic(0, 0); // x=z*(xi-cx)/fx
+      pipe_data.linear.y = (altitude/1000)*(pipe_center.y - mIntrinsic(1, 2)) / mIntrinsic(1, 1); // y=z*(yi-cy)/fy
       pipe_data.linear.z = altitude/1000;
       pipe_data.angular.x = ang+90;
       pipe_data.angular.y = 0;
