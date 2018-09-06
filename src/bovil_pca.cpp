@@ -148,6 +148,11 @@ public:
     pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
 
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
+
+    // Camera intrinsics
+    mIntrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
+        0, 721.683494, 209.109682,
+        0, 0, 1;
   }
 
   ~ImageProcessor() {}
@@ -256,8 +261,8 @@ public:
       pipe_data.angular.y = 0;
       pipe_data.angular.y = 0;
       pipe_pub_.publish(pipe_data);
-      float altitude = pipe_data.linear.z; 
-      // Extended Kalman Filter 
+      float altitude = pipe_data.linear.z;
+      // Extended Kalman Filter
       if (mKalmanFilter)
       {
         if (!mKalmanInitialized)
@@ -280,7 +285,7 @@ public:
     cout << "Execution Time PCA: " << time2 << endl;
   }
 
-  // EKF Filter centroid, P1 (Point in the dominant axis) and angle between pipe and drone. 
+  // EKF Filter centroid, P1 (Point in the dominant axis) and angle between pipe and drone.
   bool computeKalmanFilter(Mat &_src, const vector<double> _centroid, const vector<double> _p1, const float _altitude)
   {
     std::cout << "Initializating Extended Kalman Filter" << std::endl;
@@ -314,13 +319,9 @@ public:
     std::cout << "Filtered angle: " << filteredAngle << std::endl;
   }
 
-  // Initialize EKF with first observation of centroid, p1 and altitude 
+  // Initialize EKF with first observation of centroid, p1 and altitude
   void initializeKalmanFilter(const vector<double> _centroid, const vector<double> _p1, const float _altitude)
   {
-    // Camera intrinsics
-    mIntrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
-        0, 721.683494, 209.109682,
-        0, 0, 1;
     Eigen::Matrix<float, 6, 6> mQ; // State covariance
     mQ.setIdentity();
     mQ *= 0.01;
@@ -330,7 +331,7 @@ public:
     x0 << (_centroid[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_centroid[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude,
         (_p1[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_p1[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude;
     ekf.setUpEKF(mQ, mR, x0);
-    mKalmanInitialized=true;
+    mKalmanInitialized = true;
   }
 
 public:
