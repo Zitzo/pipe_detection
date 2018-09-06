@@ -17,6 +17,7 @@
 #include "std_msgs/Float64.h"
 #include "geometry_msgs/Twist.h"
 #include "ardrone_autonomy/Navdata.h"
+#include <math.h>
 //#include <tf/transform_broadcaster.h>
 
 
@@ -76,12 +77,12 @@ double getOrientation(const vector<Point> &pts, vector<double> &pipeCentroid, ve
   }
   // Draw the principal components
   circle(img, cntr, 3, Scalar(255, 0, 255), 2);
-  Point p1 = cntr + 0.02 * Point(static_cast<int>(eigen_vecs[0].x * eigen_val[0]), static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
-  Point p2 = cntr - 0.02 * Point(static_cast<int>(eigen_vecs[1].x * eigen_val[1]), static_cast<int>(eigen_vecs[1].y * eigen_val[1]));
+  Point p1 = cntr + 0.002 * Point(static_cast<int>(eigen_vecs[0].x * eigen_val[0]), static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
+  Point p2 = cntr - 0.002 * Point(static_cast<int>(eigen_vecs[1].x * eigen_val[1]), static_cast<int>(eigen_vecs[1].y * eigen_val[1]));
   drawAxis(img, cntr, p1, Scalar(0, 255, 0), 1);
   drawAxis(img, cntr, p2, Scalar(255, 255, 0), 5);
   double angle = atan2(eigen_vecs[0].y, eigen_vecs[0].x); // orientation in radians
-  angle = angle * 180 / 3.14159265;
+  angle = angle * 180 / M_PI;                             // Added
   std::cout << "Centroid coordinates x,y: " << cntr.x << "," << cntr.y << std::endl;
   std::cout << "P1 x,y: " << p1.x << "," << p1.y << std::endl;
   std::cout << "P2 x,y: " << p2.x << "," << p2.y << std::endl;
@@ -111,7 +112,7 @@ void altitudeCallback(const ardrone_autonomy::Navdata imu)
   altitude = imu.altd;
 }
 
-class AxisEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
+class PipeEKF : public rgbd::ExtendedKalmanFilter<float, 6, 6>
 {
 protected:
   void updateJf(const double _incT)
@@ -125,12 +126,8 @@ protected:
     float fy = 800.331389;
     float Cx = 327.376758;
     float Cy = 258.200534;
-    mHZk << (fx * mXfk[0] / mXfk[2]) + Cx,
-        (fy * mXfk[1] / mXfk[2]) + Cy,
-        1,
-        (fx * mXfk[3] / mXfk[5]) + Cx,
-        (fy * mXfk[4] / mXfk[5]) + Cy,
-        1;
+    mHZk << (fx * mXfk[0] / mXfk[2]) + Cx, (fy * mXfk[1] / mXfk[2]) + Cy, 1,
+        (fx * mXfk[3] / mXfk[5]) + Cx, (fy * mXfk[4] / mXfk[5]) + Cy, 1;
   }
   void updateJh()
   {
@@ -153,10 +150,10 @@ class ImageProcessor
   image_transport::Publisher img_pub_;
   ros::Publisher pipe_pub_;
   ros::Subscriber alt_sub_;
-  //ros::Subscriber sub_alt_
-      // tf::TransformBroadcaster tf_br_;
-      public : ImageProcessor(ros::NodeHandle &n, AxisEKF &_ekf) : nh_(n),
-                                                                   it_(nh_)
+  // tf::TransformBroadcaster tf_br_;
+public:
+  ImageProcessor(ros::NodeHandle &n) : nh_(n),
+                                       it_(nh_)
   {
     img_sub_ = it_.subscribe("/ardrone/bottom/image_raw", 1, &ImageProcessor::image_callback, this);
    // sub_alt_ = n.subscribe("/ardrone/navdata", 1000, altitude_Callback);
@@ -165,7 +162,11 @@ class ImageProcessor
     alt_sub_ = n.subscribe("/ardrone/navdata", 1000, altitudeCallback);
 
     //pipe_pub_ = n.advertise<geometry_msgs::Twist>("/pipe_pose", 1000);
-    ekf = _ekf;
+
+    // Camera intrinsics
+    mIntrinsic << 726.429011, 0, 283.809411, // Parrot intrinsic parameters
+        0, 721.683494, 209.109682,
+        0, 0, 1;
   }
 
   ~ImageProcessor() {}
@@ -288,36 +289,19 @@ class ImageProcessor
       pipe_data.angular.y = 0;
       pipe_data.angular.y = 0;
       pipe_pub_.publish(pipe_data);
-      // Filter orientation of each shape wit EKF
-      float altitude = 1; //666: Altitude!!!!!!!!!
-      Eigen::Matrix<float, 6, 1> z;
-      z << centroid[0], centroid[1], altitude,
-          p1[0], p1[1], altitude; // New observation
-
-      double rate = 0.2; //666: Rate!!!!!!!!!
-      ekf.stepEKF(z, rate);
-      Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
-      // State model to observation model to draw it
-      // Camera intrinsics
-      float fx = 798.936495;
-      float fy = 800.331389;
-      float cx = 327.376758;
-      float cy = 258.200534;
-      Eigen::Matrix<float, 6, 1> ZfilteredCntr;
-      ZfilteredCntr.setIdentity();
-      ZfilteredCntr << fx * XfilteredCntr[0] / XfilteredCntr[2] + cx, fy * XfilteredCntr[1] / XfilteredCntr[2] + cy, 1,
-          fx * XfilteredCntr[3] / XfilteredCntr[5] + cx, fy * XfilteredCntr[4] / XfilteredCntr[5] + cy, 1;
-      // Filtered centroid
-      Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
-      Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
-      circle(src, filtCentroid, 3, Scalar(0, 255, 255), 2);
-      circle(src, filtP1, 3, Scalar(0, 255, 255), 2);
-      drawAxis(src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
-      Point P1C = filtP1 - filtCentroid;
-      double filteredAngle = atan2(P1C.y, P1C.x);
-      std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
-      std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
-      std::cout << "Filtered angle: " << filteredAngle << std::endl;
+      float altitude = pipe_data.linear.z;
+      // Extended Kalman Filter
+      if (mKalmanFilter)
+      {
+        if (!mKalmanInitialized)
+        {
+          computeKalmanFilter(src, centroid, p1, altitude);
+        }
+        else
+        {
+          initializeKalmanFilter(centroid, p1, altitude);
+        }
+      }
     }
     imshow("output1", src);
     imshow("output2", gray);
@@ -329,34 +313,67 @@ class ImageProcessor
     cout << "Execution Time PCA: " << time2 << endl;
   }
 
+  // EKF Filter centroid, P1 (Point in the dominant axis) and angle between pipe and drone.
+  bool computeKalmanFilter(Mat &_src, const vector<double> _centroid, const vector<double> _p1, const float _altitude)
+  {
+    std::cout << "Initializating Extended Kalman Filter" << std::endl;
+    // Adding new observation
+    Eigen::Matrix<float, 6, 1> z;
+    // We assume z cte between centroid and dominant axis
+    z << _centroid[0], _centroid[1], _altitude,
+        _p1[0], _p1[1], _altitude;
+    double rate = 0.2; //666: Rate!!!!!!!!!
+
+    // New step in EKF
+    ekf.stepEKF(z, rate);
+    Eigen::Matrix<float, 6, 1> XfilteredCntr = ekf.state();
+
+    // State model to observation model to draw it
+    Eigen::Matrix<float, 6, 1> ZfilteredCntr;
+    ZfilteredCntr.setIdentity();
+    ZfilteredCntr << mIntrinsic(0, 0) * XfilteredCntr[0] / XfilteredCntr[2] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[1] / XfilteredCntr[2] + mIntrinsic(1, 2), 1,
+        mIntrinsic(0, 0) * XfilteredCntr[3] / XfilteredCntr[5] + mIntrinsic(0, 2), mIntrinsic(1, 1) * XfilteredCntr[4] / XfilteredCntr[5] + mIntrinsic(1, 2), 1;
+
+    // Filtered centroid
+    Point filtCentroid = {(int)ZfilteredCntr[0], (int)ZfilteredCntr[1]};
+    Point filtP1 = {(int)ZfilteredCntr[3], (int)ZfilteredCntr[4]};
+    circle(_src, filtCentroid, 3, Scalar(0, 255, 255), 2);
+    circle(_src, filtP1, 3, Scalar(0, 255, 255), 2);
+    drawAxis(_src, filtCentroid, filtP1, Scalar(0, 255, 255), 3);
+    Point P1C = filtP1 - filtCentroid;
+    double filteredAngle = atan2(P1C.y, P1C.x);
+    std::cout << "Filtered centroid coordinates x,y: " << filtCentroid.x << "," << filtCentroid.y << std::endl;
+    std::cout << "Filtered P1 coordinates x,y: " << filtP1.x << "," << filtP1.y << std::endl;
+    std::cout << "Filtered angle: " << filteredAngle << std::endl;
+  }
+
+  // Initialize EKF with first observation of centroid, p1 and altitude
+  void initializeKalmanFilter(const vector<double> _centroid, const vector<double> _p1, const float _altitude)
+  {
+    Eigen::Matrix<float, 6, 6> mQ; // State covariance
+    mQ.setIdentity();
+    mQ *= 0.01;
+    Eigen::Matrix<float, 6, 6> mR; // Observation covariance
+    mR.setIdentity();
+    Eigen::Matrix<float, 6, 1> x0;
+    x0 << (_centroid[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_centroid[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude,
+        (_p1[0] - mIntrinsic(0, 2)) / mIntrinsic(0, 0), (_p1[1] - mIntrinsic(1, 2)) / mIntrinsic(1, 1), _altitude;
+    ekf.setUpEKF(mQ, mR, x0);
+    mKalmanInitialized = true;
+  }
+
 public:
-  AxisEKF ekf;
+  PipeEKF ekf;
+  Eigen::Matrix<float, 3, 3> mIntrinsic;
+  bool mKalmanFilter = true;
+  bool mKalmanInitialized = false;
 };
 
 int main(int argc, char **argv)
 {
-  // Camera intrinsics
-  float fx = 798.936495;
-  float fy = 800.331389;
-  float cx = 327.376758;
-  float cy = 258.200534;
-  // Initialize EKF
-  Eigen::Matrix<float, 6, 6> mQ; // State covariance
-  mQ.setIdentity();
-  mQ *= 0.01;
-  Eigen::Matrix<float, 6, 6> mR; // Observation covariance
-  mR.setIdentity();
-  Eigen::Matrix<float, 6, 1> x0;
-
-  x0 << (700 - cx) / fx, (300 - cy) / fy, 1,
-      (700 - cx) / fx, (300 - cy) / fy, 1;
-  // Create EKF
-  AxisEKF Axis_ekf;
-  Axis_ekf.setUpEKF(mQ, mR, x0);
-
   ros::init(argc, argv, "pipe_detection");
   ros::NodeHandle n("~");
-  ImageProcessor im(n, Axis_ekf);
+  ImageProcessor im(n);
   ros::spin();
   return 0;
 }
